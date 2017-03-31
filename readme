@@ -1,0 +1,57 @@
+Tools for conflating and importing the Microsoft building data available at
+https://wiki.openstreetmap.org/wiki/Microsoft_Building_Footprint_Data .
+
+Requires Python 3 and python-gdal with GEOS support. The R script requires R!
+
+fetch.py
+-------------
+
+Retrieves current OpenStreetMap buildings from Overpass API. Takes an
+Overpass QL style bounding box and output file name as input:
+
+    python fetch.py 42.312,-83.096,42.386,-83.007 detroit_buildings.osm
+
+
+stats.py
+------------
+
+Calculates overlap between existing OSM buildings and Bing buildings. Input, in 
+order, the osm building file, the bing shapefile and the filename to store the output in
+
+    python stats.py osmxml MSBuildingshp outfile
+
+
+histo.R
+-----------
+
+Calculate a simple histogram from overlaps.txt
+
+
+match.py
+---------------
+Finds OSM buildings with a large overlap with a Microsoft building and appends a 
+height tag to those buildings. 
+
+    python match.py osmxml MSBuildingshp outfile
+
+
+newbuildings.py
+-------------------------
+
+Finds buildings in a Microsoft shapefile that do not overlap with existing OSM buildings
+and outputs a shapefile with simplified building geometries and suitable OSM tags.
+
+    python newbuildings.py detroit_buildings.osm /MS_buildings_michigan/ newbuildings
+
+
+Example Session
+-------------------------
+
+Starting with the Microsoft data for Michigan stored in `/share/gis/MS_buildings_michigan/`.
+
+    python fetch.py 42.312,-83.096,42.386,-83.007 detroit_buildings.osm
+    python stats.py detroit_buildings.osm /share/gis/MS_buildings_michigan/ overlaps.txt
+    Rscript histo.R
+    python match.py detroit_buildings.osm /share/gis/MS_buildings_michigan/ detroit_heights.osm
+    python newbuildings.py detroit_buildings.osm /share/gis/MS_buildings_michigan/ newbuildings
+    
