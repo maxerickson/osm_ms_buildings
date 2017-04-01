@@ -11,6 +11,19 @@ outshp='newbuildings'
 esridriver = ogr.GetDriverByName('ESRI Shapefile')
 osmdriver=ogr.GetDriverByName('OSM')
 
+def make_bbox(extent):
+    # https://pcjericks.github.io/py-gdalogr-cookbook/vector_layers.html#create-a-new-layer-from-the-extent-of-an-existing-layer
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    ring.AddPoint(extent[0],extent[2])
+    ring.AddPoint(extent[1], extent[2])
+    ring.AddPoint(extent[1], extent[3])
+    ring.AddPoint(extent[0], extent[3])
+    ring.AddPoint(extent[0],extent[2])
+    bbox = ogr.Geometry(ogr.wkbPolygon)
+    bbox.AddGeometry(ring)
+    return bbox
+
+
 def find_new(osmfile, inshp, outshp):
     osm=osmdriver.Open(osmfile)
     bing=esridriver.Open(inshp)
@@ -22,11 +35,12 @@ def find_new(osmfile, inshp, outshp):
     memsource=memdriver.CreateDataSource('memData')
     tmp= memdriver.Open('memData',1)
     osmbuildings=memsource.CopyLayer(osmbuildings,'buildings',['OVERWRITE=YES'])
+    osmbbox=make_bbox(osmbuildings.GetExtent())
 
     print('osm:',osmbuildings.GetFeatureCount())
     bingbuildings=bing.GetLayer()
     print('bing:',bingbuildings.GetFeatureCount())
-
+    bingbuildings.SetSpatialFilter(osmbbox)
     # setup output layer
     if os.path.exists(outshp):
         esridriver.DeleteDataSource(outshp)
