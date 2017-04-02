@@ -3,29 +3,18 @@ import argparse
 import xml.etree.ElementTree as ElementTree
 import ogr
 
-
-driver = ogr.GetDriverByName('ESRI Shapefile')
-osmdriver=ogr.GetDriverByName('OSM')
     
-def find_overlaps(osmfile, shpfile):
-    osm=osmdriver.Open(osmfile)
-    bing=driver.Open(shpfile)
-
-    osmbuildings = osm.GetLayer('multipolygons')
-    print('osm:',osmbuildings.GetFeatureCount())
-    bingbuildings=bing.GetLayer()
-    print('bing:',bingbuildings.GetFeatureCount())
-
+def find_overlaps(osmbuildings, msbuildings):
     overlaps=list()
     for building in osmbuildings:
         geom = building.GetGeometryRef()
         # filter to "nearby" buildings
         filter=geom.Buffer(0.0003)
-        bingbuildings.SetSpatialFilter(filter)
+        msbuildings.SetSpatialFilter(filter)
         # check nearby buildings for large amount of overlap
         buildingarea=geom.GetArea()
         best=0.0
-        for bbuilding in bingbuildings:
+        for bbuilding in msbuildings:
             binggeom=bbuilding.GetGeometryRef()
             bingarea=binggeom.GetArea()
             overlap=geom.Intersection(binggeom)
@@ -51,8 +40,20 @@ def make_parser():
 if __name__=="__main__":
     ap=make_parser()
     args=ap.parse_args()
-    overlaps=find_overlaps(args.osmxml, args.shp)
+
+    shpdriver = ogr.GetDriverByName('ESRI Shapefile')
+    osmdriver=ogr.GetDriverByName('OSM')
+
+    osm=osmdriver.Open(args.osmxml)
+    osmbuildings = osm.GetLayer('multipolygons')
+    print('OSM:',osmbuildings.GetFeatureCount())
+
+    ms=shpdriver.Open(args.shp)
+    msbuildings=ms.GetLayer()
+    print('MS:',msbuildings.GetFeatureCount())
+
+    overlaps=find_overlaps(osmbuildings, msbuildings)
     with open(args.outfile, 'w') as ol:
         for item in overlaps:
             ol.write(str(item)+'\n')
-
+    print(overlaps.count(0.0), 'buildings with no overlap.')
