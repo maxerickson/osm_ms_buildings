@@ -4,12 +4,7 @@ import argparse
 import ogr
 
 
-inxml='detroit_buildings.osm'
-inshp='/share/gis/MS_buildings_michigan/'
-outshp='newbuildings'
 
-esridriver = ogr.GetDriverByName('ESRI Shapefile')
-osmdriver=ogr.GetDriverByName('OSM')
 
 def make_bbox(extent):
     # https://pcjericks.github.io/py-gdalogr-cookbook/vector_layers.html#create-a-new-layer-from-the-extent-of-an-existing-layer
@@ -24,44 +19,11 @@ def make_bbox(extent):
     return bbox
 
 
-def find_new(osmfile, inshp, outshp):
-    osm=osmdriver.Open(osmfile)
-    bing=esridriver.Open(inshp)
-
-    osmbuildings = osm.GetLayer('multipolygons')
-
-    # copy osm layer to memory, to enable spatial filtering
-    memdriver=ogr.GetDriverByName('MEMORY')
-    memsource=memdriver.CreateDataSource('memData')
-    tmp= memdriver.Open('memData',1)
-    osmbuildings=memsource.CopyLayer(osmbuildings,'buildings',['OVERWRITE=YES'])
-    osmbbox=make_bbox(osmbuildings.GetExtent())
-
-    print('osm:',osmbuildings.GetFeatureCount())
-    bingbuildings=bing.GetLayer()
-    print('bing:',bingbuildings.GetFeatureCount())
-    bingbuildings.SetSpatialFilter(osmbbox)
-    # setup output layer
-    if os.path.exists(outshp):
-        esridriver.DeleteDataSource(outshp)
-
-    srs=bingbuildings.GetSpatialRef()
-    newb=esridriver.CreateDataSource(outshp)
-    newblayer=newb.CreateLayer('buildings',  srs, geom_type=ogr.wkbPolygon)
-
-    indef = bingbuildings.GetLayerDefn()
-    for i in range(0, indef.GetFieldCount()):
-        field = indef.GetFieldDefn(i)
-        field.SetName('height')
-        newblayer.CreateField(field)
-    field_building=ogr.FieldDefn("building", ogr.OFTString)
-    field_building.SetWidth(24)
-    newblayer.CreateField(field_building)
-    newblayerDefn=newblayer.GetLayerDefn()
-
+def find_new(osmbuildings, msbuildings, newbuildings):
     # Copy buildings that do not overlap osm buildings to output layer,
     # simplifying geometries and adding building=yes.
-    for building in bingbuildings:
+    newbuildingsDefn=newbuildings.GetLayerDefn()
+    for building in msbuildings:
         geom = building.GetGeometryRef()
         # filter to "nearby" buildings
         filter=geom.Buffer(0.0003)
@@ -76,13 +38,14 @@ def find_new(osmfile, inshp, outshp):
                 overlapped=True
                 break
         if not overlapped:
-            outFeature=ogr.Feature(newblayerDefn)
+            outFeature=ogr.Feature(newbuildingsDefn)
             h='%.1f' % float(building.GetField('Height'))
             outFeature.SetField('height',h)
             outFeature.SetField('building','yes')
             newg=geom.Clone().SimplifyPreserveTopology(0.000005)
             outFeature.SetGeometry(newg)
-            newblayer.CreateFeature(outFeature)
+            newbuildings.CreateFeature(outFeature)
+
 
 def make_parser():
     parser = argparse.ArgumentParser(description='Add height tag to OSM buildings that overlap with Microsoft buildings.')
@@ -97,4 +60,45 @@ def make_parser():
 if __name__=="__main__":
     ap=make_parser()
     args=ap.parse_args()
-    find_new(args.osmxml,args.shp,args.outfile)
+
+    #open input layers
+    shpdriver = ogr.GetDriverByName('ESRI Shapefile')
+    osmdriver=ogr.GetDriverByName('OSM')
+
+    osm=osmdriver.Open(args.osmxml)
+    osmbuildings = osm.GetLayer('multipolygons')
+
+    # copy osm layer to memory, to enable spatial filtering
+    memdriver=ogr.GetDriverByName('MEMORY')
+    memsource=memdriver.CreateDataSource('memData')
+    tmp= memdriver.Open('memData',1)
+    osmbuildings=memsource.CopyLayer(osmbuildings,'buildings',['OVERWRITE=YES'])
+
+    print('OSM:',osmbuildings.GetFeatureCount())
+
+    ms=shpdriver.Open(args.shp)
+    msbuildings=ms.GetLayer()
+    print('MS:',msbuildings.GetFeatureCount())
+
+    # only consider ms buildings in the OSM download area
+    osmbbox=make_bbox(osmbuildings.GetExtent())
+    msbuildings.SetSpatialFilter(osmbbox)
+
+    # setup output layer
+    if os.path.exists(args.outfile):
+        shpdriver.DeleteDataSource(args.outfile)
+
+    srs=msbuildings.GetSpatialRef()
+    newb=shpdriver.CreateDataSource(args.outfile)
+    newblayer=newb.CreateLayer('buildings',  srs, geom_type=ogr.wkbPolygon)
+
+    indef=msbuildings.GetLayerDefn()
+    field=indef.GetFieldDefn(0)
+    field.SetName('height')
+    newblayer.CreateField(field)
+    field_building=ogr.FieldDefn("building", ogr.OFTString)
+    field_building.SetWidth(24)
+    newblayer.CreateField(field_building)
+
+    find_new(osmbuildings,msbuildings,newblayer)
+    print('New:', newblayer.GetFeatureCount())
