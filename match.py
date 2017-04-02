@@ -4,13 +4,6 @@ import xml.etree.ElementTree as ElementTree
 import ogr
 
 
-inxml='buildings.osm.xml'
-inshp='/share/gis/MS_buildings_michigan/'
-outxml='buildings_heights.osm.xml'
-
-driver = ogr.GetDriverByName('ESRI Shapefile')
-osmdriver=ogr.GetDriverByName('OSM')
-
 #~ def match(osmgeom, othergeom):
 #~ osmarea=osmgeom.GetArea()
 #~ otherarea=othergeom.GetArea()
@@ -21,36 +14,26 @@ osmdriver=ogr.GetDriverByName('OSM')
 #~ else:
 #~ return False
     
-def calculate_matches(osmfile, shpfile):
-    osm=osmdriver.Open(osmfile)
-    bing=driver.Open(shpfile)
-
-    osmbuildings = osm.GetLayer('multipolygons')
-    print('osm:',osmbuildings.GetFeatureCount())
-    bingbuildings=bing.GetLayer()
-    print('bing:',bingbuildings.GetFeatureCount())
-
+def calculate_matches(osmbuildings, msbuildings):
     hits=list()
     for building in osmbuildings:
         geom = building.GetGeometryRef()
         # filter to "nearby" buildings
         filter=geom.Buffer(0.0003)
-        bingbuildings.SetSpatialFilter(filter)
+        msbuildings.SetSpatialFilter(filter)
         # check nearby buildings for large amount of overlap
         buildingarea=geom.GetArea()
-        for bbuilding in bingbuildings:
-            binggeom=bbuilding.GetGeometryRef()
-            bingarea=binggeom.GetArea()
-            overlap=geom.Intersection(binggeom)
+        for bbuilding in msbuildings:
+            msgeom=bbuilding.GetGeometryRef()
+            msarea=msgeom.GetArea()
+            overlap=geom.Intersection(msgeom)
             if overlap:
                 overlaparea=overlap.GetArea()
                 #~ if (overlaparea/buildingarea > 0.8 and
                     #~ overlaparea/bingarea > 0.8):
                 if overlaparea/buildingarea > 0.8:
                     hits.append((str(building.GetField("osm_way_id")),bbuilding.GetField("Height")))
-    print(len(hits), 'matches.')
-    hitdict=dict(hits)
-    return hitdict
+    return hits
 
 def alter_osm(infile, outfile, hitdict):
     # modify xml data with matching heights.
@@ -64,7 +47,7 @@ def alter_osm(infile, outfile, hitdict):
                 # check for existing height
                 t=child.findall("./tag[@k='height']")
                 if len(t):
-                    print("Existing height for",osmid)
+                    print("Existing height for",osmid,t[0].get('v'),height)
                     pass
                 height='%.1f' % hitdict[osmid]
                 h=ElementTree.Element('tag',{'k':'height','v':height})
@@ -87,5 +70,19 @@ def make_parser():
 if __name__=="__main__":
     ap=make_parser()
     args=ap.parse_args()
-    hits=calculate_matches(args.osmxml,args.shp)
-    alter_osm(args.osmxml, args.outfile, hits)
+
+    shpdriver = ogr.GetDriverByName('ESRI Shapefile')
+    osmdriver=ogr.GetDriverByName('OSM')
+
+    osm=osmdriver.Open(args.osmxml)
+    osmbuildings = osm.GetLayer('multipolygons')
+    print('OSM:',osmbuildings.GetFeatureCount())
+
+    ms=shpdriver.Open(args.shp)
+    msbuildings=ms.GetLayer()
+    print('MS:',msbuildings.GetFeatureCount())
+
+    hits=calculate_matches(osmbuildings,msbuildings)
+    print(len(hits), 'matches.')
+    hitdict=dict(hits)
+    alter_osm(args.osmxml, args.outfile, hitdict)
