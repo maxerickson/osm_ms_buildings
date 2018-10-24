@@ -6,9 +6,9 @@ import urllib.request
 
 
 overpass_script='''[out:xml][bbox:{{bbox}}][timeout:200];
-(way[building];
- rel[building];);
-(._;>);
+(way[building][building!=no];
+ rel[building][building!=no];);
+(._;>;);
 out meta;'''
 def fetch_data(bbox):
     global overpass_script
